@@ -42,8 +42,11 @@
 # 
 # The differences are the following:
 # 
-# 1. **Invocation:** The regular version is called with `regular_function()`, whereas the remote version is called with `remote_function.remote()`.
-# 2. **Return values:** `regular_function` immediately executes and returns `1`, whereas `remote_function` immediately returns an object ID (a future) and then creates a task that will be executed on a worker process. The result can be obtained with `ray.get`.
+# 1. **Invocation:** The regular version is called with `regular_function()`,
+# whereas the remote version is called with `remote_function.remote()`.
+# 2. **Return values:** `regular_function` immediately executes and returns `1`, 
+# whereas `remote_function` immediately returns an object ID (a future) and then creates a task that will be executed on a worker process. 
+# The result can be obtained with `ray.get`.
 #     ```python
 #     >>> regular_function(0)
 #     1
@@ -94,43 +97,54 @@ ray.init(num_cpus=4, include_webui=False, ignore_reinit_error=True, redis_max_me
 # This function is a proxy for a more interesting and computationally
 # intensive function.
 
+# Original
+# def slow_function(i):
+#     time.sleep(1)
+#     return i
+
+@ray.remote
 def slow_function(i):
     time.sleep(1)
     return i
 
-
-# **EXERCISE:** The loop below takes too long. The four function calls could be executed in parallel. Instead of four seconds, it should only take one second. Once `slow_function` has been made a remote function, execute these four tasks in parallel by calling `slow_function.remote()`. Then obtain the results by calling `ray.get` on a list of the resulting object IDs.
+# **EXERCISE:** The loop below takes too long. The four function calls could be executed in parallel. 
+# Instead of four seconds, it should only take one second. 
+# Once `slow_function` has been made a remote function, execute these four tasks in parallel by calling `slow_function.remote()`. Then obtain the results by calling `ray.get` on a list of the resulting object IDs.
 
 # Sleep a little to improve the accuracy of the timing measurements below.
 # We do this because workers may still be starting up in the background.
 time.sleep(10.0)
 start_time = time.time()
 
+# Original
 results = [slow_function(i) for i in range(4)]
+
+# added 20200405 3:00 PM
+results = [slow_function(i).remote(i) for i in range(4)]
+results = ray.get(results)
 
 end_time = time.time()
 duration = end_time - start_time
 
 print('The results are {}. This took {} seconds. Run the next cell to see '
-      'if the exercise was done correctly.'.format(results, duration))
-
+        'if the exercise was done correctly.'.format(results, duration))
 
 # **NOTE:** If instead of the above assignment to results we used
 # 
-#     `results = [ray.get(slow-function.remote(i)) for i in range(4)]`
+#     `results = [ray.get(slow_function.remote(i)) for i in range(4)]`
 #     
 # then we would not get parallelism. This is because each call to `ray.get(slow-function.remote(i))` will block computation until the remote task completes. 
 # 
-# **VERIFY:** Run some checks to verify that the changes you made to the code were correct. Some of the checks should fail when you initially run the cells. After completing the exercises, the checks should pass.
+# **VERIFY:** Run some checks to verify that the changes you made to the code were correct. Some of the checks should fail when you initially run the cells. 
+# After completing the exercises, the checks should pass.
 
 assert results == [0, 1, 2, 3], 'Did you remember to call ray.get?'
 assert duration < 1.1, ('The loop took {} seconds. This is too slow.'
                         .format(duration))
 assert duration > 1, ('The loop took {} seconds. This is too fast.'
-                      .format(duration))
+                    .format(duration))
 
 print('Success! The example took {} seconds.'.format(duration))
-
 
 # ***
 # ## Part 2 - Parallel Data Processing with Task Dependencies (15 pts)
@@ -184,21 +198,46 @@ print('Success! The example took {} seconds.'.format(duration))
 
 # These are some helper functions that mimic an example pattern of a data parallel application.
 # 
-# **EXERCISE:** You will need to turn all of these functions into remote functions. When you turn these functions into remote function, you do not have to worry about whether the caller passes in an object ID or a regular object. In both cases, the arguments will be regular objects when the function executes. This means that even if you pass in an object ID, you **do not need to call `ray.get`** inside of these remote functions.
+# **EXERCISE:** You will need to turn all of these functions into remote functions. When you turn these functions into remote function, 
+# you do not have to worry about whether the caller passes in an object ID or a regular object. 
+# In both cases, the arguments will be regular objects when the function executes. 
+# This means that even if you pass in an object ID, you **do not need to call `ray.get`** inside of these remote functions.
 
+# Original
+# def load_data(filename):
+#     time.sleep(0.1)
+#     return np.ones((1000, 100))
 
+# def normalize_data(data):
+#     time.sleep(0.1)
+#     return data - np.mean(data, axis=0)
+
+# def extract_features(normalized_data):
+#     time.sleep(0.1)
+#     return np.hstack([normalized_data, normalized_data ** 2])
+
+# def compute_loss(features):
+#     num_data, dim = features.shape
+#     time.sleep(0.1)
+#     return np.sum((np.dot(features, np.ones(dim)) - np.ones(num_data)) ** 2)
+
+# Edited 20200405 3:00PM
+@ray.remote
 def load_data(filename):
     time.sleep(0.1)
     return np.ones((1000, 100))
 
+@ray.remote
 def normalize_data(data):
     time.sleep(0.1)
     return data - np.mean(data, axis=0)
 
+@ray.remote
 def extract_features(normalized_data):
     time.sleep(0.1)
     return np.hstack([normalized_data, normalized_data ** 2])
 
+@ray.remote
 def compute_loss(features):
     num_data, dim = features.shape
     time.sleep(0.1)
@@ -210,12 +249,11 @@ assert hasattr(extract_features, 'remote'), 'extract_features must be a remote f
 assert hasattr(compute_loss, 'remote'), 'compute_loss must be a remote function'
 
 
-# **EXERCISE:** The loop below takes too long. Parallelize the four passes through the loop by turning `load_data`, `normalize_data`, `extract_features`, and `compute_loss` into remote functions and then retrieving the losses with `ray.get`.
+# **EXERCISE:** The loop below takes too long. Parallelize the four passes through the loop by turning `load_data`, `normalize_data`, 
+# `extract_features`, and `compute_loss` into remote functions and then retrieving the losses with `ray.get`.
 # 
-# **NOTE:** You should only use **ONE** call to `ray.get`. For example, the object ID returned by `load_data` should be passed directly into `normalize_data` without needing to be retrieved by the driver.
-
-# In[10]:
-
+# **NOTE:** You should only use **ONE** call to `ray.get`. 
+# For example, the object ID returned by `load_data` should be passed directly into `normalize_data` without needing to be retrieved by the driver.
 
 # Sleep a little to improve the accuracy of the timing measurements below.
 time.sleep(2.0)
@@ -225,10 +263,10 @@ losses = []
 for filename in ['file1', 'file2', 'file3', 'file4']:
     inner_start = time.time()
 
-    data = load_data(filename)
-    normalized_data = normalize_data(data)
-    features = extract_features(normalized_data)
-    loss = compute_loss(features)
+    data = load_data.remote(filename)
+    normalized_data = normalize_data.remote(data)
+    features = extract_features.remote(normalized_data)
+    loss = compute_loss.remote(features)
     losses.append(loss)
     
     inner_end = time.time()
@@ -239,16 +277,17 @@ for filename in ['file1', 'file2', 'file3', 'file4']:
                         'Make sure to only call ray.get once outside of the for loop.')
 
 print('The losses are {}.'.format(losses) + '\n')
-loss = sum(losses)
+loss = sum(ray.get(losses))
 
 end_time = time.time()
 duration = end_time - start_time
 
 print('The loss is {}. This took {} seconds. Run the next cell to see '
-      'if the exercise was done correctly.'.format(loss, duration))
+    'if the exercise was done correctly.'.format(loss, duration))
 
 
-# **VERIFY:** Run some checks to verify that the changes you made to the code were correct. Some of the checks should fail when you initially run the cells. After completing the exercises, the checks should pass.
+# **VERIFY:** Run some checks to verify that the changes you made to the code were correct. 
+# Some of the checks should fail when you initially run the cells. After completing the exercises, the checks should pass.
 
 # In[11]:
 
@@ -321,7 +360,7 @@ print('Success! The example took {} seconds.'.format(duration))
 
 # In[12]:
 
-
+@ray.remote
 class Foo(object):
     def __init__(self):
         self.counter = 0
@@ -341,8 +380,8 @@ assert hasattr(Foo, 'remote'), 'You need to turn "Foo" into an actor with @ray.r
 
 
 # Create two Foo objects.
-f1 = Foo()
-f2 = Foo()
+f1 = Foo.remote()
+f2 = Foo.remote()
 
 
 # **EXERCISE:** Parallelize the code below. The two actors can execute methods in parallel (though each actor can only execute one method at a time).
@@ -354,8 +393,8 @@ start_time = time.time()
 
 # Reset the actor state so that we can run this cell multiple times without
 # changing the results.
-f1.reset()
-f2.reset()
+f1.reset.remote()
+f2.reset.remote()
 
 # We want to parallelize this code. However, it is not straightforward to
 # make "increment" a remote function, because state is shared (the value of
@@ -363,8 +402,12 @@ f2.reset()
 # makes sense to use actors.
 results = []
 for _ in range(5):
-    results.append(f1.increment())
-    results.append(f2.increment())
+    # Added 20200405 
+    results.append(f1.increment.remote())
+    results.append(f2.increment.remote())
+
+# Added 20200405 
+results = ray.get(results)
 
 end_time = time.time()
 duration = end_time - start_time
@@ -376,7 +419,7 @@ assert not any([isinstance(result, ray.ObjectID) for result in results]), 'Looks
 assert results == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
 
 assert duration < 3, ('The experiments ran in {} seconds. This is too '
-                      'slow.'.format(duration))
+                        'slow.'.format(duration))
 assert duration > 2.5, ('The experiments ran in {} seconds. This is too '
                         'fast.'.format(duration))
 
@@ -413,7 +456,6 @@ print('Success! The example took {} seconds.'.format(duration))
 
 # In[16]:
 
-
 @ray.remote
 def f(i):
     np.random.seed(5 + i)
@@ -422,7 +464,8 @@ def f(i):
     return i, time.time()
 
 
-# **EXERCISE:** Using `ray.wait`, change the code below so that `initial_results` consists of the outputs of the first three tasks to complete instead of the first three tasks that were submitted.
+# **EXERCISE:** Using `ray.wait`, change the code below so that `initial_results` consists of the outputs of the first three tasks to complete 
+# instead of the first three tasks that were submitted.
 
 # Sleep a little to improve the accuracy of the timing measurements below.
 time.sleep(2.0)
@@ -433,7 +476,12 @@ start_time = time.time()
 result_ids = [f.remote(i) for i in range(6)]
 # Get one batch of tasks. Instead of waiting for a fixed subset of tasks, we
 # should instead use the first 3 tasks that finish.
-initial_results = ray.get(result_ids[:3])
+# Original 
+# initial_results = ray.get(result_ids[:3])
+
+# Added 20200504
+ready_ids, remaining_ids = ray.wait(result_ids, num_returns=3, timeout=None)
+initial_results = ray.get(ready_ids)
 
 end_time = time.time()
 duration = end_time - start_time
@@ -445,7 +493,11 @@ duration = end_time - start_time
 
 
 # Wait for the remaining tasks to complete.
+# original
 remaining_results = ray.get(result_ids[3:])
+
+# Added 20200405
+remaining_results = ray.get(remaining_ids)
 
 
 # **VERIFY:** Run some checks to verify that the changes you made to the code were correct. Some of the checks should fail when you initially run the cells. After completing the exercises, the checks should pass.
@@ -484,7 +536,9 @@ print('Success! The example took {} seconds.'.format(duration))
 # - They are returned by actor method calls.
 # - They are returned by `ray.put`.
 # 
-# When an object is passed to `ray.put`, the object is serialized using the Apache Arrow format (see https://arrow.apache.org/ for more information about Arrow) and copied into a shared memory object store. This object will then be available to other workers on the same machine via shared memory. If it is needed by workers on another machine, it will be shipped under the hood.
+# When an object is passed to `ray.put`, the object is serialized using the Apache Arrow format (see https://arrow.apache.org/ for more information about Arrow) 
+# and copied into a shared memory object store. This object will then be available to other workers on the same machine via shared memory. 
+# If it is needed by workers on another machine, it will be shipped under the hood.
 # 
 # **When objects are passed into a remote function, Ray puts them in the object store under the hood.** That is, if `f` is a remote function, the code
 # 
@@ -501,14 +555,17 @@ print('Success! The example took {} seconds.'.format(duration))
 # f.remote(x_id)
 # ```
 # 
-# The call to `ray.put` copies the numpy array into the shared-memory object store, from where it can be read by all of the worker processes (without additional copying). However, if you do something like
+# The call to `ray.put` copies the numpy array into the shared-memory object store, from where it can be read by all of the worker processes (without additional copying). 
+# However, if you do something like
 # 
 # ```python
 # for i in range(10):
 #     f.remote(x)
 # ```
 # 
-# then 10 copies of the array will be placed into the object store. This takes up more memory in the object store than is necessary, and it also takes time to copy the array into the object store over and over. This can be made more efficient by placing the array in the object store only once as follows.
+# then 10 copies of the array will be placed into the object store. This takes up more memory in the object store than is necessary, 
+# and it also takes time to copy the array into the object store over and over. 
+# This can be made more efficient by placing the array in the object store only once as follows.
 # 
 # ```python
 # x_id = ray.put(x)
@@ -524,9 +581,10 @@ print('Success! The example took {} seconds.'.format(duration))
 
 
 neural_net_weights = {'variable{}'.format(i): np.random.normal(size=1000000)
-                      for i in range(50)}
+                    for i in range(50)}
 
-# Pickle is a common method to serialize Python objects. In the next exercise, we compare performance of Pickle and serializing objects using Ray. If you are not familiar with Pickle, you can learn its basics here: https://wiki.python.org/moin/UsingPickle 
+# Pickle is a common method to serialize Python objects. In the next exercise, we compare performance of Pickle and serializing objects using Ray. 
+# If you are not familiar with Pickle, you can learn its basics here: https://wiki.python.org/moin/UsingPickle 
 
 # **EXERCISE:** Compare the time required to serialize the neural net weights and copy them into the object store using Ray versus the time required to pickle and unpickle the weights. The big win should be with the time required for *deserialization*.
 # 
@@ -569,9 +627,9 @@ def use_weights(weights, i):
 # Sleep a little to improve the accuracy of the timing measurements below.
 time.sleep(2.0)
 start_time = time.time()
-
-results = ray.get([use_weights.remote(neural_net_weights, i)
-                   for i in range(20)])
+neural_net_weights_id = ray.put(neural_net_weights)
+results = ray.get([use_weights.remote(neural_net_weights_id, i)
+                for i in range(20)])
 
 end_time = time.time()
 duration = end_time - start_time
@@ -584,7 +642,7 @@ duration = end_time - start_time
 
 assert results == list(range(20))
 assert duration < 1, ('The experiments ran in {} seconds. This is too '
-                      'slow.'.format(duration))
+                    'slow.'.format(duration))
 
 print('Success! The example took {} seconds.'.format(duration))
 

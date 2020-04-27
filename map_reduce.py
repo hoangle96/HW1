@@ -14,9 +14,11 @@ else:
 print('running map reduce with %d cpus' % cpus)
 ray.init(num_cpus=int(cpus), include_webui=False, ignore_reinit_error=True, redis_max_memory=1000000000, object_store_memory=10000000000)
 
+@ray.remote
 def map_serial(function, xs):
     return [function(x) for x in xs]
 
+@ray.remote
 def map_parallel(function, xs):
     """Apply a remote function to each element of a list."""
     if not isinstance(xs, list):
